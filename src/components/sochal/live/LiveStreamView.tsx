@@ -1,0 +1,355 @@
+import { useState, useEffect, useRef } from "react";
+import { mediaService } from "@/lib/media";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { 
+  Mic, MicOff, Video, VideoOff, X, Send, Users, 
+  FlipHorizontal, Share2, UserPlus, Copy, Check,
+  Gift, Heart, MessageCircle, LogIn
+} from "lucide-react";
+
+interface LiveStreamViewProps {
+  streamId: string;
+  streamTitle?: string;
+  creatorName?: string;
+  creatorHandle?: string;
+  creatorAvatar?: string;
+  isCreator: boolean;
+  onEnd: () => void;
+}
+
+export function LiveStreamView({ 
+  streamId, 
+  streamTitle, 
+  creatorName, 
+  creatorHandle, 
+  creatorAvatar,
+  isCreator, 
+  onEnd 
+}: LiveStreamViewProps) {
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [viewers, setViewers] = useState(0);
+  const [tips, setTips] = useState(0);
+  const [message, setMessage] = useState("");
+  const [showChat, setShowChat] = useState(true);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [messages, setMessages] = useState<{ user: string; avatar?: string; text: string; isTip?: boolean; amount?: number }[]>([
+    { user: "System", text: "Welcome to the live stream! 💫" }
+  ]);
+  const [giftAnimation, setGiftAnimation] = useState<{ id: string; x: number; y: number } | null>(null);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const inviteUrl = `${window.location.origin}/live/${streamId}`;
+
+  // Start camera/mic when component mounts (creator only)
+  useEffect(() => {
+    if (isCreator) {
+      startCamera();
+    } else {
+      // Viewer: Simulate joining viewers
+      setViewers(Math.floor(Math.random() * 100) + 50);
+      const interval = setInterval(() => {
+        setViewers(prev => prev + Math.floor(Math.random() * 5));
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isCreator]);
+
+  const startCamera = async () => {
+    const hasPermission = await mediaService.getCameraPermissions();
+    if (!hasPermission) {
+      alert("Please allow camera and microphone access to go live");
+      onEnd();
+      return;
+    }
+    
+    const mediaStream = await mediaService.startStream(!isVideoOff, !isMuted);
+    if (mediaStream && videoRef.current) {
+      videoRef.current.srcObject = mediaStream;
+      setStream(mediaStream);
+      
+      // Simulate viewer growth
+      setViewers(5);
+      const interval = setInterval(() => {
+        setViewers(prev => prev + Math.floor(Math.random() * 10) + 1);
+      }, 15000);
+      return () => clearInterval(interval);
+    }
+  };
+
+  const handleToggleVideo = async () => {
+    const newState = !isVideoOff;
+    await mediaService.toggleVideo(newState);
+    setIsVideoOff(newState);
+  };
+
+  const handleToggleAudio = async () => {
+    const newState = !isMuted;
+    await mediaService.toggleAudio(newState);
+    setIsMuted(newState);
+  };
+
+  const handleSwitchCamera = async () => {
+    await mediaService.switchCamera();
+  };
+
+  const sendMessage = () => {
+    if (message.trim()) {
+      setMessages([...messages, { 
+        user: "You", 
+        text: message,
+        avatar: "https://randomuser.me/api/portraits/lego/1.jpg"
+      }]);
+      setMessage("");
+    }
+  };
+
+  const sendTip = async (amount: number) => {
+    setTips(prev => prev + amount);
+    setMessages([...messages, { 
+      user: "You", 
+      text: `🎁 Sent ${amount} SOL!`, 
+      isTip: true,
+      amount
+    }]);
+    
+    // Show gift animation
+    setGiftAnimation({
+      id: Date.now().toString(),
+      x: Math.random() * 200 + 50,
+      y: Math.random() * 300 + 100,
+    });
+    setTimeout(() => setGiftAnimation(null), 2000);
+    
+    // TODO: Implement actual Solana tip transaction
+  };
+
+  const shareStream = async () => {
+    if (navigator.share) {
+      await navigator.share({
+        title: streamTitle || "Live on Sochal",
+        text: `Join ${creatorName || "my"} live stream on Sochal!`,
+        url: inviteUrl,
+      });
+    } else {
+      setShowInviteModal(true);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    await navigator.clipboard.writeText(inviteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const inviteFriend = () => {
+    setShowInviteModal(true);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (isCreator && stream) {
+        mediaService.stopStream();
+      }
+    };
+  }, [isCreator, stream]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black">
+      {/* Video Container */}
+      <div className="relative h-full w-full bg-black">
+        {isCreator ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={isMuted}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="size-32 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                <Mic className="size-16 text-blue-400" />
+              </div>
+              <p className="text-white text-xl font-semibold">{creatorName || "Creator"}</p>
+              <p className="text-gray-400 text-sm mt-1">{creatorHandle || "@creator"}</p>
+              <p className="text-gray-500 text-sm mt-4">is live!</p>
+            </div>
+          </div>
+        )}
+
+        {/* Gift Animation */}
+        {giftAnimation && (
+          <div 
+            className="fixed text-4xl animate-bounce pointer-events-none"
+            style={{ left: giftAnimation.x, top: giftAnimation.y, position: 'fixed' }}
+          >
+            🎁
+          </div>
+        )}
+
+        {/* Top Bar */}
+        <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="size-2 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-white text-sm font-medium">LIVE</span>
+              </div>
+              <div className="flex items-center gap-1 bg-black/50 rounded-full px-3 py-1">
+                <Users className="size-3 text-gray-400" />
+                <span className="text-white text-sm">{viewers}</span>
+              </div>
+              <div className="flex items-center gap-1 bg-yellow-500/20 rounded-full px-3 py-1">
+                <span className="text-yellow-400 text-xs">🏆</span>
+                <span className="text-yellow-400 text-sm font-medium">{tips.toFixed(1)} SOL</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={shareStream} className="size-8 rounded-full bg-black/50 flex items-center justify-center">
+                <Share2 className="size-4 text-white" />
+              </button>
+              {isCreator && (
+                <>
+                  <button onClick={inviteFriend} className="size-8 rounded-full bg-black/50 flex items-center justify-center">
+                    <UserPlus className="size-4 text-white" />
+                  </button>
+                  <button onClick={onEnd} className="px-3 py-1 rounded-full bg-red-500 text-white text-sm font-medium">
+                    End
+                  </button>
+                </>
+              )}
+              <button onClick={() => window.history.back()} className="size-8 rounded-full bg-black/50 flex items-center justify-center">
+                <X className="size-4 text-white" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Creator Info (for viewers) */}
+        {!isCreator && creatorAvatar && (
+          <div className="absolute bottom-24 left-4 z-10 flex items-center gap-2 bg-black/50 rounded-full pl-1 pr-3 py-1">
+            <img src={creatorAvatar} alt="" className="size-8 rounded-full object-cover" />
+            <div>
+              <p className="text-white text-sm font-semibold">{creatorName}</p>
+              <p className="text-gray-300 text-xs">{creatorHandle}</p>
+            </div>
+            <button className="ml-2 px-3 py-1 rounded-full bg-blue-600 text-white text-xs">
+              Follow
+            </button>
+          </div>
+        )}
+
+        {/* Creator Controls */}
+        {isCreator && (
+          <div className="absolute bottom-24 left-0 right-0 p-4">
+            <div className="flex justify-center gap-4">
+              <button 
+                onClick={handleToggleAudio}
+                className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"
+              >
+                {isMuted ? <MicOff className="size-6 text-white" /> : <Mic className="size-6 text-white" />}
+              </button>
+              <button 
+                onClick={handleToggleVideo}
+                className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"
+              >
+                {isVideoOff ? <VideoOff className="size-6 text-white" /> : <Video className="size-6 text-white" />}
+              </button>
+              <button 
+                onClick={handleSwitchCamera}
+                className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"
+              >
+                <FlipHorizontal className="size-6 text-white" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat Panel */}
+        <div className={`absolute right-0 top-20 bottom-20 bg-black/90 backdrop-blur-md border-l border-gray-800 transition-all duration-300 ${showChat ? 'w-80' : 'w-0 overflow-hidden'}`}>
+          <div className="flex flex-col h-full">
+            <div className="flex justify-between items-center p-3 border-b border-gray-800">
+              <h3 className="text-white font-semibold">Chat ({messages.length})</h3>
+              <button onClick={() => setShowChat(false)} className="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {messages.map((msg, i) => (
+                <div key={i} className={`text-sm ${msg.isTip ? 'bg-yellow-500/20 rounded-lg p-2' : ''}`}>
+                  <div className="flex items-start gap-2">
+                    {msg.avatar && <img src={msg.avatar} alt="" className="size-6 rounded-full" />}
+                    <div>
+                      <span className="text-blue-400 font-semibold">{msg.user}: </span>
+                      <span className="text-white">{msg.text}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t border-gray-800">
+              <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+                {[0.1, 0.5, 1, 5, 10].map(amount => (
+                  <button
+                    key={amount}
+                    onClick={() => sendTip(amount)}
+                    className="px-3 py-1.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs font-medium whitespace-nowrap"
+                  >
+                    🎁 {amount} SOL
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Say something..."
+                  className="flex-1 bg-gray-800 border-gray-700 text-white text-sm"
+                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                />
+                <Button onClick={sendMessage} size="sm" className="bg-blue-600 hover:bg-blue-700">
+                  <Send className="size-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Toggle Chat Button */}
+        {!showChat && (
+          <button 
+            onClick={() => setShowChat(true)} 
+            className="fixed right-4 top-24 size-10 rounded-full bg-blue-600 flex items-center justify-center shadow-lg"
+          >
+            <MessageCircle className="size-5 text-white" />
+          </button>
+        )}
+
+        {/* Invite Modal */}
+        {showInviteModal && (
+          <div className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center" onClick={() => setShowInviteModal(false)}>
+            <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-white font-bold text-lg mb-2">Invite Friends</h3>
+              <p className="text-gray-400 text-sm mb-4">Share this link to invite viewers to your live stream</p>
+              <div className="flex gap-2 mb-6">
+                <Input value={inviteUrl} readOnly className="bg-gray-800 border-gray-700 text-white text-sm flex-1" />
+                <Button onClick={copyInviteLink} className="bg-blue-600">
+                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowInviteModal(false)} className="flex-1">
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -30,16 +30,40 @@ export interface LiveStream {
   viewers: number;
 }
 
+// NEW: Challenge interface for the bracket system
+export interface Challenge {
+  id: string;
+  topic: Topic;
+  title: string;
+  description: string;
+  creatorId: string; // ID of creator who created it
+  targetMin: number;
+  participants: string[]; // array of wallet addresses
+  status: "waiting" | "active" | "completed" | "cancelled";
+  createdAt: number;
+  endsAt: number;
+}
+
 interface SochalState {
   wallet: { address: string; provider: WalletProvider } | null;
   profile: SochalProfile | null;
   role: Role | null;
   topic: Topic | null;
   streams: LiveStream[];   // local mirror; backend should hydrate from chain/indexer
+  challenges: Challenge[];  // NEW: Store challenges
+  selectedChallenge: Challenge | null; // NEW: Currently selected challenge for going live
 }
 
 const KEY = "sochal:state:v2";
-const initial: SochalState = { wallet: null, profile: null, role: null, topic: null, streams: [] };
+const initial: SochalState = { 
+  wallet: null, 
+  profile: null, 
+  role: null, 
+  topic: null, 
+  streams: [],
+  challenges: [],
+  selectedChallenge: null,
+};
 
 let state: SochalState = initial;
 if (typeof window !== "undefined") {
@@ -56,8 +80,6 @@ const persist = () => {
 };
 
 // ---------- Real Solana wallet detection ----------
-// These wallets inject providers into window. We talk to them directly so users
-// connect their actual on-chain account — no mock addresses.
 type InjectedProvider = {
   isPhantom?: boolean;
   publicKey?: { toString(): string };
@@ -95,7 +117,6 @@ export const sochal = {
     return () => listeners.delete(l);
   },
 
-  /** Connect to a real injected Solana wallet. Throws if not installed. */
   connect: async (provider: WalletProvider) => {
     const injected = getInjected(provider);
     if (!injected) {
@@ -122,8 +143,6 @@ export const sochal = {
     emit();
   },
 
-  /** Create or update the user's Sochal profile.
-   *  TODO: persist to on-chain Profile PDA (seeds = ["profile", wallet]). */
   saveProfile: (p: Omit<SochalProfile, "createdAt"> & { createdAt?: number }) => {
     state = {
       ...state,
@@ -145,17 +164,59 @@ export const sochal = {
     emit();
   },
 
-  /** Start a live stream. TODO: replace with Anchor `init_live(topic, title, target)`
-   *  + open 100ms/Agora room and store the room id alongside the PDA. */
+  // NEW: Challenge management
+  createChallenge: (challenge: Omit<Challenge, "id" | "createdAt" | "status" | "participants">) => {
+    const newChallenge: Challenge = {
+      ...challenge,
+      id: `ch_${Date.now()}`,
+      participants: [state.wallet!.address],
+      status: "waiting",
+      createdAt: Date.now(),
+    };
+    state = {
+      ...state,
+      challenges: [newChallenge, ...state.challenges],
+      selectedChallenge: newChallenge,
+    };
+    persist();
+    emit();
+    return newChallenge;
+  },
+
+  setSelectedChallenge: (challenge: Challenge | null) => {
+    state = { ...state, selectedChallenge: challenge };
+    persist();
+    emit();
+  },
+
+  joinChallenge: (challengeId: string) => {
+    state = {
+      ...state,
+      challenges: state.challenges.map((c) =>
+        c.id === challengeId && !c.participants.includes(state.wallet!.address)
+          ? { ...c, participants: [...c.participants, state.wallet!.address] }
+          : c
+      ),
+    };
+    const updated = state.challenges.find((c) => c.id === challengeId);
+    if (updated) state.selectedChallenge = updated;
+    persist();
+    emit();
+  },
+
   startStream: (input: { topic: Topic; title: string; targetSol: number }) => {
     if (!state.wallet || !state.profile) throw new Error("Wallet + profile required");
+    
+    // Check if there's a selected challenge
+    const hasChallenge = state.selectedChallenge !== null;
+    
     const stream: LiveStream = {
       id: `local_${Date.now()}`,
       ownerWallet: state.wallet.address,
       handle: state.profile.handle,
       displayName: state.profile.displayName,
       topic: input.topic,
-      title: input.title,
+      title: hasChallenge ? `[Challenge] ${input.title}` : input.title,
       startedAt: Date.now(),
       isLive: true,
       potSol: 0,

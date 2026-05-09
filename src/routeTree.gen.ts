@@ -13,6 +13,7 @@ import { Route as FanRouteImport } from './routes/fan'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as CreatorRouteImport } from './routes/creator'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LiveStreamIdRouteImport } from './routes/live.$streamId'
 
 const FanRoute = FanRouteImport.update({
   id: '/fan',
@@ -34,18 +35,25 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LiveStreamIdRoute = LiveStreamIdRouteImport.update({
+  id: '/live/$streamId',
+  path: '/live/$streamId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/creator': typeof CreatorRoute
   '/explore': typeof ExploreRoute
   '/fan': typeof FanRoute
+  '/live/$streamId': typeof LiveStreamIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/creator': typeof CreatorRoute
   '/explore': typeof ExploreRoute
   '/fan': typeof FanRoute
+  '/live/$streamId': typeof LiveStreamIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,14 @@ export interface FileRoutesById {
   '/creator': typeof CreatorRoute
   '/explore': typeof ExploreRoute
   '/fan': typeof FanRoute
+  '/live/$streamId': typeof LiveStreamIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/creator' | '/explore' | '/fan'
+  fullPaths: '/' | '/creator' | '/explore' | '/fan' | '/live/$streamId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/creator' | '/explore' | '/fan'
-  id: '__root__' | '/' | '/creator' | '/explore' | '/fan'
+  to: '/' | '/creator' | '/explore' | '/fan' | '/live/$streamId'
+  id: '__root__' | '/' | '/creator' | '/explore' | '/fan' | '/live/$streamId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +76,7 @@ export interface RootRouteChildren {
   CreatorRoute: typeof CreatorRoute
   ExploreRoute: typeof ExploreRoute
   FanRoute: typeof FanRoute
+  LiveStreamIdRoute: typeof LiveStreamIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +109,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/live/$streamId': {
+      id: '/live/$streamId'
+      path: '/live/$streamId'
+      fullPath: '/live/$streamId'
+      preLoaderRoute: typeof LiveStreamIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +124,7 @@ const rootRouteChildren: RootRouteChildren = {
   CreatorRoute: CreatorRoute,
   ExploreRoute: ExploreRoute,
   FanRoute: FanRoute,
+  LiveStreamIdRoute: LiveStreamIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
